@@ -1,0 +1,125 @@
+terraform {
+  required_version = ">= 1.1.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">=3.0.0"
+    }
+  }
+
+  backend "azurerm" {
+    resource_group_name  = "visitorcountjm"
+    storage_account_name = "tfstatevisitorjm"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+# ===========================================================
+# ✅ Resource Group
+# ===========================================================
+resource "azurerm_resource_group" "main" {
+  name     = "visitorcountjm"
+  location = "East US"
+}
+
+# ===========================================================
+# ✅ Storage Account for Function App
+# ===========================================================
+resource "azurerm_storage_account" "function_sa" {
+  name                     = "visitorcountjmfuncsa"
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
+# ===========================================================
+# ✅ App Service Plan (Consumption Plan)
+# ===========================================================
+resource "azurerm_app_service_plan" "function_plan" {
+  name                = "visitorcountjm-plan"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  kind                = "Linux"
+  reserved            = true
+
+  sku {
+    tier = "Dynamic"
+    size = "Y1"
+  }
+}
+
+# ===========================================================
+# ✅ Azure Function App
+# ===========================================================
+resource "azurerm_function_app" "function" {
+  name                       = "visitorcountjm"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  app_service_plan_id        = azurerm_app_service_plan.function_plan.id
+  storage_account_name       = azurerm_storage_account.function_sa.name
+  storage_account_access_key = azurerm_storage_account.function_sa.primary_access_key
+  version                    = "~4"
+
+  site_config {
+    linux_fx_version = "Node|16" # Change to "PYTHON|3.10" for Python
+    ftps_state       = "Disabled"
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  app_settings = {
+    FUNCTIONS_WORKER_RUNTIME = "node" # or "python"
+    WEBSITE_RUN_FROM_PACKAGE = "1"
+  }
+}
+
+# ===========================================================
+# ✅ Cosmos DB Account
+# ===========================================================
+resource "azurerm_cosmosdb_account" "cosmos" {
+  name                = "cosmosdbjms"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  offer_type          = "Standard"
+  kind                = "GlobalDocumentDB"
+
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
+  capabilities = [
+    { name = "EnableTable" }
+  ]
+
+  geo_location {
+    location          = azurerm_resource_group.main.location
+    failover_priority = 0
+  }
+}
+
+# ===========================================================
+# ✅ Terraform Outputs
+# ===========================================================
+output "function_app_default_hostname" {
+  value       = azurerm_function_app.function.default_hostname
+  description = "Default hostname of the Azure Function App"
+}
+
+output "function_app_url" {
+  value       = "https://${azurerm_function_app.function.default_hostname}/api"
+  description = "Function base URL (append route as needed)"
+}
+
+output "cosmosdb_account_endpoint" {
+  value       = azurerm_cosmosdb_account.cosmos.endpoint
+  description = "Cosmos DB endpoint URL"
+}
