@@ -40,9 +40,9 @@ resource "azurerm_storage_account" "function_sa" {
 }
 
 # ===========================================================
-# ✅ App Service Plan (Consumption Plan)
+# ✅ Service Plan (Consumption Plan) — updated resource
 # ===========================================================
-resource "azurerm_app_service_plan" "function_plan" {
+resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
@@ -62,13 +62,13 @@ resource "azurerm_function_app" "function" {
   name                       = "visitorcountjm"
   location                   = azurerm_resource_group.main.location
   resource_group_name        = azurerm_resource_group.main.name
-  app_service_plan_id        = azurerm_app_service_plan.function_plan.id
+  app_service_plan_id        = azurerm_service_plan.function_plan.id
   storage_account_name       = azurerm_storage_account.function_sa.name
   storage_account_access_key = azurerm_storage_account.function_sa.primary_access_key
   version                    = "~4"
 
   site_config {
-    linux_fx_version = "Node|16" # change to "PYTHON|3.10" if needed
+    linux_fx_version = "Node|16"
     ftps_state       = "Disabled"
   }
 
@@ -77,13 +77,13 @@ resource "azurerm_function_app" "function" {
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "node" # or "python"
+    FUNCTIONS_WORKER_RUNTIME = "node"
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 }
 
 # ===========================================================
-# ✅ Cosmos DB Account
+# ✅ Cosmos DB Account — capabilities fixed
 # ===========================================================
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
@@ -96,9 +96,9 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     consistency_level = "Session"
   }
 
-  capabilities = [
-    { name = "EnableTable" }
-  ]
+  capabilities {
+    name = "EnableTable"
+  }
 
   geo_location {
     location          = azurerm_resource_group.main.location
@@ -116,7 +116,7 @@ output "function_app_default_hostname" {
 
 output "function_app_url" {
   value       = "https://${azurerm_function_app.function.default_hostname}/api"
-  description = "Function base URL"
+  description = "Function base URL (append route as needed)"
 }
 
 output "cosmosdb_account_endpoint" {
