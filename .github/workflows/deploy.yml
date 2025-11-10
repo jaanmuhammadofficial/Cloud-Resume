@@ -15,50 +15,51 @@ jobs:
       TF_VAR_storage_account_name: tfstatevisitorjm
       TF_VAR_tfstate_container_name: tfstate
       TF_VAR_app_code_path: app
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-
+      AZURE_LOCATION: canadacentral  # Your region
     steps:
+      # -----------------------------
+      # Checkout code
+      # -----------------------------
       - name: Checkout
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # Set up Terraform
+      # -----------------------------
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: '1.6.0'
 
-      # =========================================================
-      # ✅ Login to Azure using Service Principal
-      # =========================================================
-      - name: Login to Azure CLI
-        run: |
-          echo "🔑 Logging into Azure using Service Principal..."
-          az login --service-principal \
-            -u $ARM_CLIENT_ID \
-            -p $ARM_CLIENT_SECRET \
-            --tenant $ARM_TENANT_ID
-          az account set --subscription $ARM_SUBSCRIPTION_ID
+      # -----------------------------
+      # Login to Azure using Service Principal JSON secret
+      # -----------------------------
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # =========================================================
-      # ✅ Ensure Resource Group exists
-      # =========================================================
+      # -----------------------------
+      # Ensure resource group exists
+      # -----------------------------
       - name: Ensure resource group exists
         run: |
-          az group create -n ${{ env.TF_VAR_resource_group_name }} -l "canadacentral"
+          az group create -n ${{ env.TF_VAR_resource_group_name }} -l ${{ env.AZURE_LOCATION }}
 
-      # =========================================================
-      # ✅ Create Storage Account for Terraform state
-      # =========================================================
-      - name: Create storage account for tfstate if not exists
+      # -----------------------------
+      # Create storage account for tfstate if not exists
+      # -----------------------------
+      - name: Create storage account for tfstate
         run: |
           az storage account create \
             --name ${{ env.TF_VAR_storage_account_name }} \
             --resource-group ${{ env.TF_VAR_resource_group_name }} \
-            --location canadacentral \
+            --location ${{ env.AZURE_LOCATION }} \
             --sku Standard_LRS || true
 
+      # -----------------------------
+      # Create storage container for tfstate
+      # -----------------------------
       - name: Create storage container for tfstate
         run: |
           conn_str=$(az storage account show-connection-string \
@@ -67,9 +68,9 @@ jobs:
           echo "TF_BACKEND_CONN_STR=$conn_str" >> $GITHUB_ENV
           az storage container create --name ${{ env.TF_VAR_tfstate_container_name }} --connection-string "$conn_str" || true
 
-      # =========================================================
-      # ✅ Terraform init, plan & apply
-      # =========================================================
+      # -----------------------------
+      # Terraform init
+      # -----------------------------
       - name: Terraform init
         working-directory: .
         env:
@@ -84,6 +85,9 @@ jobs:
             -backend-config="container_name=${{ env.TF_VAR_tfstate_container_name }}" \
             -backend-config="key=terraform.tfstate"
 
+      # -----------------------------
+      # Terraform plan
+      # -----------------------------
       - name: Terraform plan
         working-directory: .
         env:
@@ -93,6 +97,9 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform plan -out=tfplan -input=false
 
+      # -----------------------------
+      # Terraform apply
+      # -----------------------------
       - name: Terraform apply
         working-directory: .
         env:
@@ -102,27 +109,33 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform apply -input=false -auto-approve tfplan
 
-      # =========================================================
-      # ✅ Package and deploy Azure Function App
-      # =========================================================
+      # -----------------------------
+      # Pack Function App code
+      # -----------------------------
       - name: Pack app
         run: |
           cd ${{ env.TF_VAR_app_code_path }}
           zip -r ../app_package.zip .
 
+      # -----------------------------
+      # Get Function App default hostname
+      # -----------------------------
       - name: Get function default host
         id: gethost
         run: |
           host=$(az functionapp show -n ${{ env.TF_VAR_function_app_name }} -g ${{ env.TF_VAR_resource_group_name }} --query defaultHostName -o tsv)
           echo "FUNCTION_HOSTNAME=$host" >> $GITHUB_ENV
 
+      # -----------------------------
+      # Deploy package to Function App
+      # -----------------------------
       - name: Deploy package to Function App
         run: |
-          az functionapp deployment source config-zip \
-            -g ${{ env.TF_VAR_resource_group_name }} \
-            -n ${{ env.TF_VAR_function_app_name }} \
-            --src app_package.zip
+          az functionapp deployment source config-zip -g ${{ env.TF_VAR_resource_group_name }} -n ${{ env.TF_VAR_function_app_name }} --src app_package.zip
 
+      # -----------------------------
+      # Show function URL
+      # -----------------------------
       - name: Show function URL
         run: |
           echo "Function URL: https://${{ env.FUNCTION_HOSTNAME }}/api"
