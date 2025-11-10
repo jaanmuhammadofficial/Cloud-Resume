@@ -25,7 +25,7 @@ provider "azurerm" {
 # ===========================================================
 resource "azurerm_resource_group" "main" {
   name     = "visitorcountjm"
-  location = "East US"
+  location = "Canada Central"
 }
 
 # ===========================================================
