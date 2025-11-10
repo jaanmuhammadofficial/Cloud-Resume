@@ -13,25 +13,12 @@ terraform {
     storage_account_name = "tfstatevisitorjm"
     container_name       = "tfstate"
     key                  = "terraform.tfstate"
-
-    tenant_id       = var.tenant_id
-    subscription_id = var.subscription_id
-    client_id       = var.client_id
-    client_secret   = var.client_secret
   }
 }
 
 provider "azurerm" {
   features {}
 }
-
-# =====================
-# Variables for backend auth
-# =====================
-variable "tenant_id" {}
-variable "subscription_id" {}
-variable "client_id" {}
-variable "client_secret" {}
 
 # ===========================================================
 # Resource Group
@@ -59,10 +46,8 @@ resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-
-  kind     = "FunctionApp"
-  os_type  = "Linux"
-  sku_name = "Y1" # Consumption plan
+  os_type             = "Linux"
+  sku_name            = "Y1" # Consumption plan
 }
 
 # ===========================================================
@@ -78,7 +63,7 @@ resource "azurerm_function_app" "function" {
   version                    = "~4"
 
   site_config {
-    linux_fx_version = "Node|16" # Change to "Python|3.10" for Python
+    linux_fx_version = "Node|16" # or "Python|3.10" if using Python
     ftps_state       = "Disabled"
   }
 
@@ -87,7 +72,7 @@ resource "azurerm_function_app" "function" {
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "node" # or "python"
+    FUNCTIONS_WORKER_RUNTIME = "node"
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 }
@@ -99,15 +84,17 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  offer_type          = "Standard"
   kind                = "GlobalDocumentDB"
+  offer_type          = "Standard"
 
   consistency_policy {
     consistency_level = "Session"
   }
 
   capabilities {
-    name = "EnableTable"
+    capability {
+      name = "EnableTable"
+    }
   }
 
   geo_location {
@@ -117,7 +104,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
 }
 
 # ===========================================================
-# Terraform Outputs
+# Outputs
 # ===========================================================
 output "function_app_default_hostname" {
   value       = azurerm_function_app.function.default_hostname
