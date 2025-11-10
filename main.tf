@@ -40,19 +40,16 @@ resource "azurerm_storage_account" "function_sa" {
 }
 
 # ===========================================================
-# ✅ Service Plan (Consumption Plan) — updated resource
+# ✅ Service Plan (Consumption Plan) — Linux Function App
 # ===========================================================
 resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  kind                = "Linux"
+  kind                = "FunctionApp"
   reserved            = true
-
-  sku {
-    tier = "Dynamic"
-    size = "Y1"
-  }
+  os_type             = "Linux"
+  sku_name            = "Y1"
 }
 
 # ===========================================================
@@ -83,7 +80,7 @@ resource "azurerm_function_app" "function" {
 }
 
 # ===========================================================
-# ✅ Cosmos DB Account — capabilities fixed
+# ✅ Cosmos DB Account — fixed capabilities
 # ===========================================================
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
