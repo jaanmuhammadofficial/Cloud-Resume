@@ -1,102 +1,41 @@
 terraform {
-  required_version = ">= 1.6.0"
-
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">=3.0.0"
+      version = ">= 3.100.0"
     }
-  }
-
-  backend "azurerm" {
-    resource_group_name  = "visitorcountjm"
-    storage_account_name = "tfstatevisitorjm"
-    container_name       = "tfstate"
-    key                  = "terraform.tfstate"
   }
 }
 
 provider "azurerm" {
   features {}
-
-  client_id       = var.client_id
-  client_secret   = var.client_secret
-  tenant_id       = var.tenant_id
-  subscription_id = var.subscription_id
 }
 
-# =======================
-# Variables
-# =======================
-variable "client_id" {}
-variable "client_secret" {}
-variable "tenant_id" {}
-variable "subscription_id" {}
-
-# =======================
-# Resource Group
-# =======================
-resource "azurerm_resource_group" "main" {
-  name     = "visitorcountjm"
-  location = "canadacentral"
+# -----------------------------
+# Existing Resource Group
+# -----------------------------
+data "azurerm_resource_group" "devops" {
+  name = "DevOps"
 }
 
-# =======================
-# Storage Account for Terraform state / Function App
-# =======================
-resource "azurerm_storage_account" "function_sa" {
-  name                     = "visitorcountjmfuncsa"
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = azurerm_resource_group.main.location
+# -----------------------------
+# Storage Account for Function
+# -----------------------------
+resource "azurerm_storage_account" "funcsa" {
+  name                     = "azurecrcjmfuncsa"
+  resource_group_name      = data.azurerm_resource_group.devops.name
+  location                 = data.azurerm_resource_group.devops.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
 
-# =======================
-# Service Plan (Consumption) for Function App
-# =======================
-resource "azurerm_service_plan" "function_plan" {
-  name                = "visitorcountjm-plan"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  os_type             = "Linux"
-  sku_name            = "Y1"   # Consumption plan
-}
-
-# =======================
-# Function App
-# =======================
-resource "azurerm_function_app" "function" {
-  name                       = "visitorcountjm"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
-  app_service_plan_id        = azurerm_service_plan.function_plan.id
-  storage_account_name       = azurerm_storage_account.function_sa.name
-  storage_account_access_key = azurerm_storage_account.function_sa.primary_access_key
-  version                    = "~4"
-
-  site_config {
-    linux_fx_version = "Node|16"
-    ftps_state       = "Disabled"
-  }
-
-  identity {
-    type = "SystemAssigned"
-  }
-
-  app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "node"
-    WEBSITE_RUN_FROM_PACKAGE = "1"
-  }
-}
-
-# =======================
-# Cosmos DB
-# =======================
+# -----------------------------
+# Cosmos DB (Table API)
+# -----------------------------
 resource "azurerm_cosmosdb_account" "cosmos" {
-  name                = "cosmosdbjms"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  name                = "azure-crc-jm"
+  location            = "Canada Central"
+  resource_group_name = data.azurerm_resource_group.devops.name
   offer_type          = "Standard"
   kind                = "GlobalDocumentDB"
 
@@ -104,30 +43,58 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     consistency_level = "Session"
   }
 
+  geo_location {
+    location          = "Canada Central"
+    failover_priority = 0
+  }
+
   capabilities {
     name = "EnableTable"
   }
+}
 
-  geo_location {
-    location          = azurerm_resource_group.main.location
-    failover_priority = 0
+# Database Table
+resource "azurerm_cosmosdb_table" "table" {
+  name                = "counter"
+  resource_group_name = data.azurerm_resource_group.devops.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+}
+
+# -----------------------------
+# Service Plan (Linux)
+# -----------------------------
+resource "azurerm_service_plan" "function_plan" {
+  name                = "azure-crc-jm-plan"
+  location            = "Canada Central"
+  resource_group_name = data.azurerm_resource_group.devops.name
+  os_type             = "Linux"
+  sku_name            = "Y1"
+  worker_count        = 1
+}
+
+# -----------------------------
+# Function App
+# -----------------------------
+resource "azurerm_linux_function_app" "function_app" {
+  name                        = "azure-crc-jm"
+  location                    = "Canada Central"
+  resource_group_name         = data.azurerm_resource_group.devops.name
+  service_plan_id             = azurerm_service_plan.function_plan.id
+  storage_account_name        = azurerm_storage_account.funcsa.name
+  storage_account_access_key  = azurerm_storage_account.funcsa.primary_access_key
+  functions_extension_version = "~4"
+
+  site_config {
+    application_stack {
+      python_version = "3.11"
+    }
   }
-}
 
-# =======================
-# Outputs
-# =======================
-output "function_app_default_hostname" {
-  value       = azurerm_function_app.function.default_hostname
-  description = "Default hostname of the Azure Function App"
-}
-
-output "function_app_url" {
-  value       = "https://${azurerm_function_app.function.default_hostname}/api"
-  description = "Function base URL (append route as needed)"
-}
-
-output "cosmosdb_account_endpoint" {
-  value       = azurerm_cosmosdb_account.cosmos.endpoint
-  description = "Cosmos DB endpoint URL"
+  app_settings = {
+    "FUNCTIONS_WORKER_RUNTIME" = "python"
+    "AzureWebJobsStorage"      = azurerm_storage_account.funcsa.primary_connection_string
+    "COSMOS_TABLE_ENDPOINT"    = azurerm_cosmosdb_account.cosmos.endpoint
+    "COSMOS_TABLE_KEY"         = azurerm_cosmosdb_account.cosmos.primary_key
+    "TABLE_NAME"               = azurerm_cosmosdb_table.table.name
+  }
 }

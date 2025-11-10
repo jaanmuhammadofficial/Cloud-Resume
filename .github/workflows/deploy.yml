@@ -1,67 +1,58 @@
-name: Terraform Apply and Deploy Function
+name: Deploy Azure Function and Cosmos DB
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  provision-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    env:
-      TF_VAR_client_id: ${{ secrets.ARM_CLIENT_ID }}
-      TF_VAR_client_secret: ${{ secrets.ARM_CLIENT_SECRET }}
-      TF_VAR_subscription_id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      TF_VAR_tenant_id: ${{ secrets.ARM_TENANT_ID }}
-      TF_VAR_resource_group_name: visitorcountjm
-      TF_VAR_function_app_name: visitorcountjm
-      TF_VAR_cosmos_account_name: cosmosdbjms
-      TF_VAR_storage_account_name: tfstatevisitorjm
-      TF_VAR_tfstate_container_name: tfstate
-      TF_VAR_app_code_path: app
 
     steps:
-      - name: Checkout code
+      # Step 1 — Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: '1.6.0'
-
-      - name: Login to Azure using GitHub Action
+      # Step 2 — Azure login using service principal
+      - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Ensure Resource Group exists
+      # Step 3 — Export credentials for Terraform provider
+      - name: Set Azure environment variables for Terraform
         run: |
-          az group create -n ${{ env.TF_VAR_resource_group_name }} -l canadacentral
+          echo "ARM_CLIENT_ID=${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}" >> $GITHUB_ENV
+          echo "ARM_CLIENT_SECRET=${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}" >> $GITHUB_ENV
+          echo "ARM_SUBSCRIPTION_ID=${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}" >> $GITHUB_ENV
+          echo "ARM_TENANT_ID=${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}" >> $GITHUB_ENV
 
-      - name: Create storage account container for tfstate
-        run: |
-          conn_str=$(az storage account show-connection-string \
-            --name ${{ env.TF_VAR_storage_account_name }} \
-            --resource-group ${{ env.TF_VAR_resource_group_name }} -o tsv)
-          az storage container create --name ${{ env.TF_VAR_tfstate_container_name }} --connection-string "$conn_str" || true
+      # Step 4 — Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
 
+      # Step 5 — Terraform init
       - name: Terraform Init
-        run: terraform init -input=false
+        run: terraform init
 
+      # Step 6 — Terraform plan
       - name: Terraform Plan
         run: terraform plan -out=tfplan -input=false
 
+      # Step 7 — Terraform apply
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
 
-      - name: Pack app code
-        run: |
-          cd ${{ env.TF_VAR_app_code_path }}
-          zip -r ../app_package.zip .
-
-      - name: Deploy package to Function App
-        run: |
-          az functionapp deployment source config-zip -g ${{ env.TF_VAR_resource_group_name }} -n ${{ env.TF_VAR_function_app_name }} --src app_package.zip
-
-      - name: Show function URL
-        run: echo "Function URL: https://${{ env.TF_VAR_function_app_name }}.azurewebsites.net/api"
+      # Step 8 — Deploy Azure Function App code
+      - name: Deploy Function App Code
+        uses: Azure/functions-action@v1
+        with:
+          app-name: "azure-crc-jm"
+          package: "."
