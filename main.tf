@@ -21,7 +21,7 @@ provider "azurerm" {
 }
 
 # ===========================================================
-# ✅ Resource Group
+# Resource Group
 # ===========================================================
 resource "azurerm_resource_group" "main" {
   name     = "visitorcountjm"
@@ -29,7 +29,7 @@ resource "azurerm_resource_group" "main" {
 }
 
 # ===========================================================
-# ✅ Storage Account for Function App
+# Storage Account for Function App
 # ===========================================================
 resource "azurerm_storage_account" "function_sa" {
   name                     = "visitorcountjmfuncsa"
@@ -40,20 +40,18 @@ resource "azurerm_storage_account" "function_sa" {
 }
 
 # ===========================================================
-# ✅ Service Plan (Consumption Plan) — Linux Function App
+# Service Plan for Linux Function App (Consumption)
 # ===========================================================
 resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  kind                = "FunctionApp"
-  reserved            = true
   os_type             = "Linux"
   sku_name            = "Y1"
 }
 
 # ===========================================================
-# ✅ Azure Function App
+# Azure Function App
 # ===========================================================
 resource "azurerm_function_app" "function" {
   name                       = "visitorcountjm"
@@ -80,7 +78,7 @@ resource "azurerm_function_app" "function" {
 }
 
 # ===========================================================
-# ✅ Cosmos DB Account — fixed capabilities
+# Cosmos DB Account
 # ===========================================================
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
@@ -104,7 +102,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
 }
 
 # ===========================================================
-# ✅ Terraform Outputs
+# Outputs
 # ===========================================================
 output "function_app_default_hostname" {
   value       = azurerm_function_app.function.default_hostname
