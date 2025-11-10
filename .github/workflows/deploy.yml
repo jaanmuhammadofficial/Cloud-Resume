@@ -33,16 +33,12 @@ jobs:
           terraform_version: '1.6.0'
 
       # ==============================================================
-      # ✅ Step 3: Login to Azure using Service Principal
+      # ✅ Step 3: Login to Azure using GitHub Secret
       # ==============================================================
       - name: Login to Azure
-        run: |
-          echo "🔑 Logging into Azure using service principal..."
-          az login --service-principal \
-            --username "${{ secrets.ARM_CLIENT_ID }}" \
-            --password "${{ secrets.ARM_CLIENT_SECRET }}" \
-            --tenant "08365895-aab7-45da-b06f-e1c3e385b201"
-          az account set --subscription "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       # ==============================================================
       # ✅ Step 4: Ensure Resource Group & Storage
@@ -61,9 +57,12 @@ jobs:
 
       - name: Create storage container for tfstate
         run: |
-          conn_str=$(az storage account show-connection-string --name ${{ env.TF_VAR_storage_account_name }} --resource-group ${{ env.TF_VAR_resource_group_name }} -o tsv)
+          conn_str=$(az storage account show-connection-string \
+            --name ${{ env.TF_VAR_storage_account_name }} \
+            --resource-group ${{ env.TF_VAR_resource_group_name }} -o tsv)
           echo "TF_BACKEND_CONN_STR=$conn_str" >> $GITHUB_ENV
-          az storage container create --name ${{ env.TF_VAR_tfstate_container_name }} --connection-string "$conn_str" || true
+          az storage container create --name ${{ env.TF_VAR_tfstate_container_name }} \
+            --connection-string "$conn_str" || true
 
       # ==============================================================
       # ✅ Step 5: Terraform Init, Plan & Apply
