@@ -15,7 +15,7 @@ provider "azurerm" {
 # Existing Resource Group
 # -----------------------------
 data "azurerm_resource_group" "devops" {
-  name = "DevOps"
+  name = "AzureDevOps"   # <-- updated RG name
 }
 
 # -----------------------------
