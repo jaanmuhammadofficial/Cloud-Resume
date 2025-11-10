@@ -18,19 +18,32 @@ terraform {
 
 provider "azurerm" {
   features {}
+
+  client_id       = var.client_id
+  client_secret   = var.client_secret
+  tenant_id       = var.tenant_id
+  subscription_id = var.subscription_id
 }
 
-# ===========================================================
-# ✅ Resource Group
-# ===========================================================
+# =======================
+# Variables
+# =======================
+variable "client_id" {}
+variable "client_secret" {}
+variable "tenant_id" {}
+variable "subscription_id" {}
+
+# =======================
+# Resource Group
+# =======================
 resource "azurerm_resource_group" "main" {
   name     = "visitorcountjm"
-  location = "canadacentral"  # Use your actual region
+  location = "canadacentral"
 }
 
-# ===========================================================
-# ✅ Storage Account for Function App
-# ===========================================================
+# =======================
+# Storage Account for Terraform state / Function App
+# =======================
 resource "azurerm_storage_account" "function_sa" {
   name                     = "visitorcountjmfuncsa"
   resource_group_name      = azurerm_resource_group.main.name
@@ -39,22 +52,20 @@ resource "azurerm_storage_account" "function_sa" {
   account_replication_type = "LRS"
 }
 
-# ===========================================================
-# ✅ App Service Plan (Consumption Plan) using new resource
-# ===========================================================
+# =======================
+# Service Plan (Consumption) for Function App
+# =======================
 resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-
-  sku_name = "Y1"  # Consumption plan for Functions
-  os_type  = "Linux"
-  kind     = "FunctionApp"
+  os_type             = "Linux"
+  sku_name            = "Y1"   # Consumption plan
 }
 
-# ===========================================================
-# ✅ Azure Function App
-# ===========================================================
+# =======================
+# Function App
+# =======================
 resource "azurerm_function_app" "function" {
   name                       = "visitorcountjm"
   location                   = azurerm_resource_group.main.location
@@ -65,7 +76,7 @@ resource "azurerm_function_app" "function" {
   version                    = "~4"
 
   site_config {
-    linux_fx_version = "Node|16" # Change to "Python|3.10" if using Python
+    linux_fx_version = "Node|16"
     ftps_state       = "Disabled"
   }
 
@@ -74,14 +85,14 @@ resource "azurerm_function_app" "function" {
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "node" # or "python"
+    FUNCTIONS_WORKER_RUNTIME = "node"
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 }
 
-# ===========================================================
-# ✅ Cosmos DB Account
-# ===========================================================
+# =======================
+# Cosmos DB
+# =======================
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
   location            = azurerm_resource_group.main.location
@@ -93,7 +104,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     consistency_level = "Session"
   }
 
-  capability {
+  capabilities {
     name = "EnableTable"
   }
 
@@ -103,9 +114,9 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   }
 }
 
-# ===========================================================
-# ✅ Terraform Outputs
-# ===========================================================
+# =======================
+# Outputs
+# =======================
 output "function_app_default_hostname" {
   value       = azurerm_function_app.function.default_hostname
   description = "Default hostname of the Azure Function App"
