@@ -25,7 +25,7 @@ provider "azurerm" {
 # ===========================================================
 resource "azurerm_resource_group" "main" {
   name     = "visitorcountjm"
-  location = "Canada Central"
+  location = "canadacentral"
 }
 
 # ===========================================================
@@ -68,7 +68,7 @@ resource "azurerm_function_app" "function" {
   version                    = "~4"
 
   site_config {
-    linux_fx_version = "Node|16" # Change to "PYTHON|3.10" for Python
+    linux_fx_version = "Node|16" # change to "PYTHON|3.10" if needed
     ftps_state       = "Disabled"
   }
 
@@ -116,7 +116,7 @@ output "function_app_default_hostname" {
 
 output "function_app_url" {
   value       = "https://${azurerm_function_app.function.default_hostname}/api"
-  description = "Function base URL (append route as needed)"
+  description = "Function base URL"
 }
 
 output "cosmosdb_account_endpoint" {
