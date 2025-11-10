@@ -33,7 +33,7 @@ jobs:
           terraform_version: '1.6.0'
 
       # ==============================================================
-      # ✅ Step 3: Login to Azure using GitHub Secret
+      # ✅ Step 3: Login to Azure CLI
       # ==============================================================
       - name: Login to Azure
         uses: azure/login@v1
@@ -41,7 +41,18 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       # ==============================================================
-      # ✅ Step 4: Ensure Resource Group & Storage
+      # ✅ Step 4: Export Service Principal for Terraform
+      # ==============================================================
+      - name: Set ARM environment variables for Terraform
+        run: echo "ARM variables set for Terraform"
+        env:
+          ARM_CLIENT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          ARM_CLIENT_SECRET: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
+          ARM_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+          ARM_TENANT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
+
+      # ==============================================================
+      # ✅ Step 5: Ensure Resource Group & Storage for tfstate
       # ==============================================================
       - name: Ensure resource group exists
         run: |
@@ -65,10 +76,15 @@ jobs:
             --connection-string "$conn_str" || true
 
       # ==============================================================
-      # ✅ Step 5: Terraform Init, Plan & Apply
+      # ✅ Step 6: Terraform Init, Plan & Apply
       # ==============================================================
       - name: Terraform init
         working-directory: .
+        env:
+          ARM_CLIENT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          ARM_CLIENT_SECRET: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
+          ARM_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+          ARM_TENANT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
         run: |
           terraform init -input=false \
             -backend-config="resource_group_name=${{ env.TF_VAR_resource_group_name }}" \
@@ -78,14 +94,24 @@ jobs:
 
       - name: Terraform plan
         working-directory: .
+        env:
+          ARM_CLIENT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          ARM_CLIENT_SECRET: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
+          ARM_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+          ARM_TENANT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
         run: terraform plan -out=tfplan -input=false
 
       - name: Terraform apply
         working-directory: .
+        env:
+          ARM_CLIENT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          ARM_CLIENT_SECRET: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
+          ARM_SUBSCRIPTION_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+          ARM_TENANT_ID: ${{ fromJson(secrets.AZURE_CREDENTIALS).tenantId }}
         run: terraform apply -input=false -auto-approve tfplan
 
       # ==============================================================
-      # ✅ Step 6: Package and Deploy Function Code
+      # ✅ Step 7: Package and Deploy Function App
       # ==============================================================
       - name: Pack app
         run: |
@@ -100,15 +126,4 @@ jobs:
 
       - name: Deploy package to Function App
         run: |
-          az functionapp deployment source config-zip \
-            -g ${{ env.TF_VAR_resource_group_name }} \
-            -n ${{ env.TF_VAR_function_app_name }} \
-            --src app_package.zip
-
-      # ==============================================================
-      # ✅ Step 7: Show Function URL
-      # ==============================================================
-      - name: Show function URL
-        run: |
-          echo "✅ Function deployed successfully!"
-          echo "🌐 Function URL: https://${{ env.FUNCTION_HOSTNAME }}/api"
+          az functionapp deployment source c
