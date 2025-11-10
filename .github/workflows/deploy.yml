@@ -15,10 +15,13 @@ jobs:
       TF_VAR_storage_account_name: tfstatevisitorjm
       TF_VAR_tfstate_container_name: tfstate
       TF_VAR_app_code_path: app
-      AZURE_LOCATION: canadacentral
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Terraform
@@ -26,34 +29,28 @@ jobs:
         with:
           terraform_version: '1.6.0'
 
-      # =========================
-      # Login to Azure with SP
-      # =========================
-      - name: Login to Azure using Service Principal
-        run: |
-          echo "🔑 Logging into Azure using Service Principal..."
-          az login --service-principal \
-            -u ${{ secrets.ARM_CLIENT_ID }} \
-            -p ${{ secrets.ARM_CLIENT_SECRET }} \
-            --tenant ${{ secrets.ARM_TENANT_ID }}
-          az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      # ✅ Proper Azure login using service principal JSON secret
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # =========================
-      # Ensure Resource Group exists
-      # =========================
+      # =========================================================
+      # Ensure resource group exists
+      # =========================================================
       - name: Ensure resource group exists
         run: |
-          az group create -n ${{ env.TF_VAR_resource_group_name }} -l ${{ env.AZURE_LOCATION }}
+          az group create -n ${{ env.TF_VAR_resource_group_name }} -l "canadacentral"
 
-      # =========================
-      # Create Storage Account for Terraform state
-      # =========================
-      - name: Create storage account for tfstate if not exists
+      # =========================================================
+      # Create storage account for Terraform state if not exists
+      # =========================================================
+      - name: Create storage account for tfstate
         run: |
           az storage account create \
             --name ${{ env.TF_VAR_storage_account_name }} \
             --resource-group ${{ env.TF_VAR_resource_group_name }} \
-            --location ${{ env.AZURE_LOCATION }} \
+            --location canadacentral \
             --sku Standard_LRS || true
 
       - name: Create storage container for tfstate
@@ -65,9 +62,9 @@ jobs:
           az storage container create --name ${{ env.TF_VAR_tfstate_container_name }} \
             --connection-string "$conn_str" || true
 
-      # =========================
-      # Terraform init
-      # =========================
+      # =========================================================
+      # Terraform init, plan, apply
+      # =========================================================
       - name: Terraform init
         working-directory: .
         env:
@@ -82,9 +79,6 @@ jobs:
             -backend-config="container_name=${{ env.TF_VAR_tfstate_container_name }}" \
             -backend-config="key=terraform.tfstate"
 
-      # =========================
-      # Terraform plan & apply
-      # =========================
       - name: Terraform plan
         working-directory: .
         env:
@@ -103,9 +97,9 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
         run: terraform apply -input=false -auto-approve tfplan
 
-      # =========================
-      # Deploy App Code
-      # =========================
+      # =========================================================
+      # Package and deploy Azure Function App
+      # =========================================================
       - name: Pack app
         run: |
           cd ${{ env.TF_VAR_app_code_path }}
@@ -114,12 +108,16 @@ jobs:
       - name: Get function default host
         id: gethost
         run: |
-          host=$(az functionapp show -n ${{ env.TF_VAR_function_app_name }} -g ${{ env.TF_VAR_resource_group_name }} --query defaultHostName -o tsv)
+          host=$(az functionapp show -n ${{ env.TF_VAR_function_app_name }} \
+            -g ${{ env.TF_VAR_resource_group_name }} --query defaultHostName -o tsv)
           echo "FUNCTION_HOSTNAME=$host" >> $GITHUB_ENV
 
       - name: Deploy package to Function App
         run: |
-          az functionapp deployment source config-zip -g ${{ env.TF_VAR_resource_group_name }} -n ${{ env.TF_VAR_function_app_name }} --src app_package.zip
+          az functionapp deployment source config-zip \
+            -g ${{ env.TF_VAR_resource_group_name }} \
+            -n ${{ env.TF_VAR_function_app_name }} \
+            --src app_package.zip
 
       - name: Show function URL
         run: |
