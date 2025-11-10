@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.1.0"
+  required_version = ">= 1.6.0"
 
   required_providers {
     azurerm = {
@@ -21,15 +21,15 @@ provider "azurerm" {
 }
 
 # ===========================================================
-# Resource Group
+# ✅ Resource Group
 # ===========================================================
 resource "azurerm_resource_group" "main" {
   name     = "visitorcountjm"
-  location = "canadacentral"
+  location = "canadacentral"  # Use your actual region
 }
 
 # ===========================================================
-# Storage Account for Function App
+# ✅ Storage Account for Function App
 # ===========================================================
 resource "azurerm_storage_account" "function_sa" {
   name                     = "visitorcountjmfuncsa"
@@ -40,18 +40,20 @@ resource "azurerm_storage_account" "function_sa" {
 }
 
 # ===========================================================
-# Service Plan for Linux Function App (Consumption)
+# ✅ App Service Plan (Consumption Plan) using new resource
 # ===========================================================
 resource "azurerm_service_plan" "function_plan" {
   name                = "visitorcountjm-plan"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  os_type             = "Linux"
-  sku_name            = "Y1"
+
+  sku_name = "Y1"  # Consumption plan for Functions
+  os_type  = "Linux"
+  kind     = "FunctionApp"
 }
 
 # ===========================================================
-# Azure Function App
+# ✅ Azure Function App
 # ===========================================================
 resource "azurerm_function_app" "function" {
   name                       = "visitorcountjm"
@@ -63,7 +65,7 @@ resource "azurerm_function_app" "function" {
   version                    = "~4"
 
   site_config {
-    linux_fx_version = "Node|16"
+    linux_fx_version = "Node|16" # Change to "Python|3.10" if using Python
     ftps_state       = "Disabled"
   }
 
@@ -72,13 +74,13 @@ resource "azurerm_function_app" "function" {
   }
 
   app_settings = {
-    FUNCTIONS_WORKER_RUNTIME = "node"
+    FUNCTIONS_WORKER_RUNTIME = "node" # or "python"
     WEBSITE_RUN_FROM_PACKAGE = "1"
   }
 }
 
 # ===========================================================
-# Cosmos DB Account
+# ✅ Cosmos DB Account
 # ===========================================================
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = "cosmosdbjms"
@@ -91,7 +93,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     consistency_level = "Session"
   }
 
-  capabilities {
+  capability {
     name = "EnableTable"
   }
 
@@ -102,7 +104,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
 }
 
 # ===========================================================
-# Outputs
+# ✅ Terraform Outputs
 # ===========================================================
 output "function_app_default_hostname" {
   value       = azurerm_function_app.function.default_hostname
